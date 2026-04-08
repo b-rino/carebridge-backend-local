@@ -1,0 +1,98 @@
+@startuml 2FA_Robustness_Diagram
+title 2FA Robustness Diagram – Carebridge
+
+skinparam backgroundColor #FAFAFA
+skinparam defaultFontName Arial
+skinparam defaultFontSize 13
+skinparam ArrowColor #333333
+
+skinparam actor {
+    BorderColor #2C3E50
+    BackgroundColor #D5E8D4
+}
+skinparam boundary {
+    BorderColor #1565C0
+    BackgroundColor #DDEEFF
+}
+skinparam control {
+    BorderColor #6A1B9A
+    BackgroundColor #EDE7F6
+}
+skinparam entity {
+    BorderColor #BF360C
+    BackgroundColor #FFF3E0
+}
+
+' ─────────────────────────────────────────
+' ACTORS
+' ─────────────────────────────────────────
+actor "User" as user
+actor "Google\nAuthenticator" as ga
+
+' ─────────────────────────────────────────
+' BOUNDARY OBJECTS (API endpoints / UI)
+' ─────────────────────────────────────────
+boundary "POST /api/auth/login" as loginEndpoint
+boundary "POST /api/auth/2fa/setup" as setupEndpoint
+boundary "POST /api/auth/2fa/confirm" as confirmEndpoint
+boundary "POST /api/auth/2fa/verify" as verifyEndpoint
+boundary "QR Code Response" as qrCode
+
+' ─────────────────────────────────────────
+' CONTROL OBJECTS
+' ─────────────────────────────────────────
+control "SecurityController" as secCtrl
+control "TokenSecurity\n(TOTP + JWT)" as tokenSec
+
+' ─────────────────────────────────────────
+' ENTITY OBJECTS
+' ─────────────────────────────────────────
+entity "User\n(Database)" as userEntity
+entity "Temp Token\n(5-min JWT,\nscope: 2fa_pending)" as tempToken
+entity "JWT Token\n(full access)" as jwtToken
+
+' ═══════════════════════════════════════════
+' FLOW 1 – Setup 2FA
+' ═══════════════════════════════════════════
+
+note as n1
+  <b>Flow 1: Setup 2FA</b>
+  (User already logged in)
+end note
+
+user --> setupEndpoint : "Enable 2FA"
+setupEndpoint --> secCtrl
+secCtrl --> tokenSec : generate TOTP secret
+tokenSec --> userEntity : save totpSecret
+secCtrl --> qrCode : return QR code URL
+qrCode --> user : display QR code
+user --> ga : scan QR code
+
+user --> confirmEndpoint : submit first TOTP code
+confirmEndpoint --> secCtrl
+secCtrl --> tokenSec : verify TOTP code
+tokenSec --> userEntity : set twoFactorEnabled = true
+
+' ═══════════════════════════════════════════
+' FLOW 2 – Login with 2FA
+' ═══════════════════════════════════════════
+
+note as n2
+  <b>Flow 2: Login with 2FA</b>
+end note
+
+user --> loginEndpoint : email + password
+loginEndpoint --> secCtrl
+secCtrl --> userEntity : verify password (BCrypt)
+secCtrl --> tokenSec : issue temp token (5 min)
+tokenSec --> tempToken
+tempToken --> user : { pending2fa: true, tempToken }
+
+user --> ga : open app, read TOTP code
+user --> verifyEndpoint : tempToken + TOTP code
+verifyEndpoint --> secCtrl
+secCtrl --> tokenSec : validate temp token\n+ verify TOTP code
+tokenSec --> jwtToken : issue full JWT
+jwtToken --> user : full access JWT
+
+@enduml
