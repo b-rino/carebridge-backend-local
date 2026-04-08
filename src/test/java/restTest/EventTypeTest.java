@@ -3,6 +3,7 @@ package restTest;
 import com.carebridge.config.ApplicationConfig;
 import com.carebridge.config.HibernateConfig;
 import com.carebridge.config.Populator;
+import com.carebridge.services.TotpService;
 import io.javalin.Javalin;
 import io.javalin.http.ContentType;
 import io.restassured.RestAssured;
@@ -23,28 +24,46 @@ import static org.hamcrest.Matchers.is;
         @BeforeAll
         public void setup() throws Exception {
             HibernateConfig.setTest(true);
-
             app = ApplicationConfig.startServer(7070);
-
             Populator.populate(HibernateConfig.getEntityManagerFactoryForTest());
-
             RestAssured.baseURI = "http://localhost:7070/api";
 
-            authToken = given()
+            TotpService totp = new TotpService();
+
+            String aliceTempToken = given()
                     .contentType(ContentType.JSON)
                     .body("{\"email\":\"alice@carebridge.io\", \"password\":\"password123\"}")
                     .post("/auth/login")
-                    .then()
-                    .statusCode(200)
+                    .then().statusCode(200)
+                    .extract().path("tempToken");
+
+            authToken = given()
+                    .contentType(ContentType.JSON)
+                    .header("Authorization", "Bearer " + aliceTempToken)
+                    .body("{\"code\":\"" + totp.generateCurrentCode(Populator.ALICE_TOTP_SECRET) + "\"}")
+                    .post("/auth/2fa/verify")
+                    .then().statusCode(200)
                     .extract().path("token");
 
-            adminAuthToken = given()
+            String adminTempToken = given()
                     .contentType(ContentType.JSON)
                     .body("{\"email\":\"admin@carebridge.io\", \"password\":\"admin123\"}")
                     .post("/auth/login")
-                    .then()
-                    .statusCode(200)
+                    .then().statusCode(200)
+                    .extract().path("tempToken");
+
+            adminAuthToken = given()
+                    .contentType(ContentType.JSON)
+                    .header("Authorization", "Bearer " + adminTempToken)
+                    .body("{\"code\":\"" + totp.generateCurrentCode(Populator.ADMIN_TOTP_SECRET) + "\"}")
+                    .post("/auth/2fa/verify")
+                    .then().statusCode(200)
                     .extract().path("token");
+        }
+
+        @AfterAll
+        public void teardown() {
+            ApplicationConfig.stopServer(app);
         }
 
     private static int createdEventTypeId;

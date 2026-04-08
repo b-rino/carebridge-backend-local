@@ -60,7 +60,7 @@ public class SecurityController implements ISecurityController {
                 AuthRequest req = ctx.bodyAsClass(AuthRequest.class);
                 User verified = securityDAO.getVerifiedUser(req.getEmail(), req.getPassword());
 
-                if (verified.getTotpSecret() == null) {
+                if (!verified.isTotpEnabled()) {
                     // First login: TOTP setup required
                     String tempToken = buildTempToken(verified.getEmail(), "SETUP");
                     ctx.status(200).json(out

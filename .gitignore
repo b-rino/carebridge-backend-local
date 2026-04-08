@@ -3,6 +3,9 @@
 .env.local
 src/main/resources/application.properties
 
+# ===== Claude Code =====
+.claude/
+
 # ===== Maven build =====
 /target/
 *.log

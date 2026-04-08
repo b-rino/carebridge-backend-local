@@ -34,4 +34,9 @@ public class TotpService {
         );
         return verifier.isValidCode(secret, code);
     }
+
+    public String generateCurrentCode(String secret) throws Exception {
+        long counter = Math.floorDiv(new SystemTimeProvider().getTime(), 30);
+        return new DefaultCodeGenerator().generate(secret, counter);
+    }
 }

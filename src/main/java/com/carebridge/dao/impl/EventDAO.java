@@ -35,7 +35,11 @@ public class EventDAO implements IDAO<Event, Long> {
     @Override
     public Event read(Long id) {
         try (var em = em()) {
-            return em.find(Event.class, id);
+            var results = em.createQuery(
+                    "SELECT e FROM Event e LEFT JOIN FETCH e.seenByUsers WHERE e.id = :id",
+                    Event.class
+            ).setParameter("id", id).getResultList();
+            return results.isEmpty() ? null : results.get(0);
         } catch (Exception e) {
             logger.error("Error reading Event id={}", id, e);
             throw new ApiRuntimeException(500, "Error reading event: " + e.getMessage());
@@ -104,9 +108,13 @@ public class EventDAO implements IDAO<Event, Long> {
     public Event update(Long id, Event updated) {
         try (var em = em()) {
             em.getTransaction().begin();
-            Event existing = em.find(Event.class, id);
-            if (existing == null)
+            var results = em.createQuery(
+                    "SELECT e FROM Event e LEFT JOIN FETCH e.seenByUsers WHERE e.id = :id",
+                    Event.class
+            ).setParameter("id", id).getResultList();
+            if (results.isEmpty())
                 throw new ApiRuntimeException(404, "Event not found");
+            Event existing = results.get(0);
 
             if (updated.getTitle() != null && !updated.getTitle().isBlank())
                 existing.setTitle(updated.getTitle());
