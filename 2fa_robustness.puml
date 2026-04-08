@@ -1,10 +1,14 @@
 @startuml 2FA_Robustness_Diagram
 title 2FA Robustness Diagram – Carebridge
 
+left to right direction
+
 skinparam backgroundColor #FAFAFA
 skinparam defaultFontName Arial
-skinparam defaultFontSize 13
+skinparam defaultFontSize 12
 skinparam ArrowColor #333333
+skinparam NoteBackgroundColor #FFFDE7
+skinparam NoteBorderColor #F9A825
 
 skinparam actor {
     BorderColor #2C3E50
@@ -24,75 +28,141 @@ skinparam entity {
 }
 
 ' ─────────────────────────────────────────
+' USER STORY – venstre side
+' ─────────────────────────────────────────
+note as userStory #FFFDE7
+  <b>Konfiguration af 2FA</b>
+  ====
+  <b>Som</b> systembruger vil jeg blive tvunget til at
+  opsætte en 2FA-metode ved første login, så min
+  konto er bedre beskyttet mod uautoriseret adgang.
+  ....
+  <b>Givet</b> at en bruger ikke har en aktiv 2FA-konfiguration,
+  <b>Når</b> brugeren indtaster sine korrekte loginoplysninger
+  og trykker "log ind",
+  <b>Så</b> bliver brugeren automatisk omdirigeret til
+  2FA-konfiguration, uden at kunne tilgå andre
+  subdomæner indtil korrekt 2FA-konfiguration.
+  ....
+  OG
+  <b>Givet</b> at brugeren er på 2FA-konfigurationssiden,
+  <b>Når</b> brugeren forsøger at tilgå andre sider,
+  <b>Så</b> mødes brugeren af en fejlmeddelelse om at
+  konfigurationen skal færdiggøres.
+  ....
+  OG
+  <b>Givet</b> at en bruger indtaster fejlagtige informationer,
+  <b>Når</b> brugeren bedes om at indsætte 2FA-koden,
+  <b>Så</b> møder brugeren en fejlbesked og kan forsøge igen.
+  ....
+  ELLER
+  <b>Givet</b> at en bruger har en korrekt opsat 2FA-konfiguration,
+  <b>Når</b> brugeren forsøger at logge ind,
+  <b>Så</b> skal brugeren anvende 2FA for at tilgå systemet.
+  ....
+  OG
+  <b>Givet</b> at en bruger logger ind med 2FA,
+  <b>Når</b> brugeren er logget succesfuldt ind,
+  <b>Så</b> gemmes enheden som en godkendt enhed der
+  automatisk bekræfter 2FA i de næste 14 dage.
+end note
+
+' ─────────────────────────────────────────
 ' ACTORS
 ' ─────────────────────────────────────────
 actor "User" as user
 actor "Google\nAuthenticator" as ga
 
 ' ─────────────────────────────────────────
-' BOUNDARY OBJECTS (API endpoints / UI)
+' BOUNDARY OBJECTS
 ' ─────────────────────────────────────────
-boundary "POST /api/auth/login" as loginEndpoint
-boundary "POST /api/auth/2fa/setup" as setupEndpoint
-boundary "POST /api/auth/2fa/confirm" as confirmEndpoint
-boundary "POST /api/auth/2fa/verify" as verifyEndpoint
-boundary "QR Code Response" as qrCode
+boundary "POST /auth/login" as loginEndpoint
+boundary "POST /auth/2fa/setup" as setupEndpoint
+boundary "POST /auth/2fa/confirm" as confirmEndpoint
+boundary "POST /auth/2fa/verify" as verifyEndpoint
+boundary "QR Code Page" as qrBoundary
+boundary "2FA Prompt" as promptBoundary
+boundary "Error Response" as errorBoundary
+boundary "Success Response" as successBoundary
 
 ' ─────────────────────────────────────────
 ' CONTROL OBJECTS
 ' ─────────────────────────────────────────
-control "SecurityController" as secCtrl
-control "TokenSecurity\n(TOTP + JWT)" as tokenSec
+control "AuthController" as authCtrl
+control "TotpService\n(TOTP + JWT)" as totpSvc
+control "TrustedDeviceService" as deviceSvc
 
 ' ─────────────────────────────────────────
 ' ENTITY OBJECTS
 ' ─────────────────────────────────────────
-entity "User\n(Database)" as userEntity
-entity "Temp Token\n(5-min JWT,\nscope: 2fa_pending)" as tempToken
+entity "User" as userEntity
+entity "Temp Token\n(5 min, scope: 2fa_pending)" as tempToken
 entity "JWT Token\n(full access)" as jwtToken
+entity "TrustedDevice\n(expires 14 days)" as trustedDevice
 
-' ═══════════════════════════════════════════
-' FLOW 1 – Setup 2FA
-' ═══════════════════════════════════════════
+' ─────────────────────────────────────────
+' POSITIONERING – note holdes til venstre
+' ─────────────────────────────────────────
+userStory -[hidden]right-> user
 
-note as n1
-  <b>Flow 1: Setup 2FA</b>
-  (User already logged in)
-end note
-
-user --> setupEndpoint : "Enable 2FA"
-setupEndpoint --> secCtrl
-secCtrl --> tokenSec : generate TOTP secret
-tokenSec --> userEntity : save totpSecret
-secCtrl --> qrCode : return QR code URL
-qrCode --> user : display QR code
-user --> ga : scan QR code
-
-user --> confirmEndpoint : submit first TOTP code
-confirmEndpoint --> secCtrl
-secCtrl --> tokenSec : verify TOTP code
-tokenSec --> userEntity : set twoFactorEnabled = true
-
-' ═══════════════════════════════════════════
-' FLOW 2 – Login with 2FA
-' ═══════════════════════════════════════════
-
-note as n2
-  <b>Flow 2: Login with 2FA</b>
-end note
+' ═══════════════════════════════════════════════════
+' FLOW 1 – Første login: tvungen 2FA-opsætning
+' AC1: ingen 2FA → redirect til opsætning
+' AC2: blokeret under opsætning
+' AC3: ugyldig kode under opsætning
+' ═══════════════════════════════════════════════════
 
 user --> loginEndpoint : email + password
-loginEndpoint --> secCtrl
-secCtrl --> userEntity : verify password (BCrypt)
-secCtrl --> tokenSec : issue temp token (5 min)
-tokenSec --> tempToken
-tempToken --> user : { pending2fa: true, tempToken }
+loginEndpoint --> authCtrl
+authCtrl --> userEntity : verify credentials
+authCtrl --> setupEndpoint : redirect (ingen 2FA opsat – AC1)
+setupEndpoint --> authCtrl
+authCtrl --> totpSvc : generate TOTP secret
+totpSvc --> userEntity : save totpSecret
+authCtrl --> qrBoundary : QR code URL
+qrBoundary --> user : vis QR kode
 
-user --> ga : open app, read TOTP code
-user --> verifyEndpoint : tempToken + TOTP code
-verifyEndpoint --> secCtrl
-secCtrl --> tokenSec : validate temp token\n+ verify TOTP code
-tokenSec --> jwtToken : issue full JWT
-jwtToken --> user : full access JWT
+user --> ga : scan QR kode
+
+user --> confirmEndpoint : første TOTP kode
+confirmEndpoint --> authCtrl
+
+note bottom of authCtrl
+  <b>AC2:</b> forsøg på at tilgå anden side
+  → errorBoundary → "færdiggør konfiguration"
+  <b>AC3:</b> ugyldig TOTP kode
+  → errorBoundary → fejlbesked + prøv igen
+end note
+
+authCtrl --> errorBoundary : AC2 / AC3 fejl
+errorBoundary --> user
+
+authCtrl --> totpSvc : verify TOTP kode
+totpSvc --> userEntity : twoFactorEnabled = true
+authCtrl --> successBoundary : opsætning gennemført
+successBoundary --> user
+
+' ═══════════════════════════════════════════════════
+' FLOW 2 – Login med eksisterende 2FA
+' AC4: 2FA påkrævet ved login
+' AC5: godkendt enhed huskes 14 dage
+' ═══════════════════════════════════════════════════
+
+user --> loginEndpoint : email + password
+loginEndpoint --> authCtrl
+authCtrl --> userEntity : verify credentials
+authCtrl --> tempToken : udsted temp token (5 min)
+authCtrl --> promptBoundary : pending2fa + tempToken
+promptBoundary --> user : vis 2FA prompt (AC4)
+
+user --> ga : aflæs TOTP kode
+user --> verifyEndpoint : tempToken + TOTP kode
+verifyEndpoint --> authCtrl
+authCtrl --> totpSvc : valider temp token + TOTP
+totpSvc --> jwtToken : udsted fuld JWT
+authCtrl --> deviceSvc : registrer godkendt enhed (AC5)
+deviceSvc --> trustedDevice : gem enhed (14 dage)
+authCtrl --> successBoundary : fuld JWT
+successBoundary --> user : adgang til systemet
 
 @enduml
