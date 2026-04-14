@@ -26,4 +26,6 @@ public interface ISecurityDAO {
     void saveTotpSecret(String email, String secret);
 
     void enableTotp(String email);
+
+    void renewGracePeriod(String email);
 }

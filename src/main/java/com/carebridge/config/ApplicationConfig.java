@@ -16,10 +16,7 @@ public class ApplicationConfig {
     private static final AccessController accessController = new AccessController();
     private static final Logger logger = LoggerFactory.getLogger(ApplicationConfig.class);
     private static final Routes routes = new Routes();
-    private static final java.util.Set<String> allowedOrigins = java.util.Set.of(
-            "http://localhost:5173",
-            "http://127.0.0.1:5173"
-    );
+    private static final String frontEndOrigin = Utils.getPropertyValue("FRONTEND_ORIGIN", "application.properties");
     private static int count = 1;
 
     public static void configuration(JavalinConfig config) {
@@ -74,10 +71,7 @@ public class ApplicationConfig {
     }
 
     private static void corsHeaders(Context ctx) {
-        String origin = ctx.header("Origin");
-        if (origin != null && allowedOrigins.contains(origin)) {
-            ctx.header("Access-Control-Allow-Origin", origin);
-        }
+        ctx.header("Access-Control-Allow-Origin", frontEndOrigin);
         ctx.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
         ctx.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
         ctx.header("Access-Control-Allow-Credentials", "true");

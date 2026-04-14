@@ -195,4 +195,24 @@ public class SecurityTest {
                 .then()
                 .statusCode(200);
     }
+
+    // ═══════════════════════════════════════════════════
+    // FLOW 3 – Login inden for grace period
+    // Bruger har totp_enabled=true og gyldig grace period
+    // → fuld JWT returneres direkte, ingen 2FA-prompt
+    // ═══════════════════════════════════════════════════
+
+    @Test
+    @Order(11)
+    void loginIndenforGracePeriod_returnerFuldTokenDirekte() {
+        given()
+                .contentType(ContentType.JSON)
+                .body("{\"email\":\"grace@carebridge.io\", \"password\":\"password123\"}")
+                .post("/auth/login")
+                .then()
+                .statusCode(200)
+                .body("token", notNullValue())
+                .body("requires2FA", nullValue())
+                .body("requiresTotpSetup", nullValue());
+    }
 }

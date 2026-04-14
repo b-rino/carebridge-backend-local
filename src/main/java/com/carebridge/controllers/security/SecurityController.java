@@ -30,6 +30,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.text.ParseException;
+import java.time.Instant;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -61,13 +62,16 @@ public class SecurityController implements ISecurityController {
                 User verified = securityDAO.getVerifiedUser(req.getEmail(), req.getPassword());
 
                 if (!verified.isTotpEnabled()) {
-                    // First login: TOTP setup required
+                    // First login ever: QR setup required
                     String tempToken = buildTempToken(verified.getEmail(), "SETUP");
                     ctx.status(200).json(out
                             .put("requiresTotpSetup", true)
                             .put("tempToken", tempToken));
+                } else if (isWithinGracePeriod(verified)) {
+                    // Within 14-day grace period: skip 2FA, issue full JWT directly
+                    ctx.status(200).json(buildFullTokenResponse(verified));
                 } else {
-                    // Returning user: TOTP verification required
+                    // Grace period expired: 6-digit TOTP code required (no QR)
                     String tempToken = buildTempToken(verified.getEmail(), "VERIFY");
                     ctx.status(200).json(out
                             .put("requires2FA", true)
@@ -120,6 +124,7 @@ public class SecurityController implements ISecurityController {
                 }
 
                 securityDAO.enableTotp(email);
+                securityDAO.renewGracePeriod(email);
                 ctx.status(200).json(buildFullTokenResponse(user));
             } catch (ApiRuntimeException e) {
                 ctx.status(e.getErrorCode()).json(out.put("msg", e.getMessage()));
@@ -147,6 +152,7 @@ public class SecurityController implements ISecurityController {
                     return;
                 }
 
+                securityDAO.renewGracePeriod(email);
                 ctx.status(200).json(buildFullTokenResponse(user));
             } catch (ApiRuntimeException e) {
                 ctx.status(e.getErrorCode()).json(out.put("msg", e.getMessage()));
@@ -155,6 +161,11 @@ public class SecurityController implements ISecurityController {
                 ctx.status(500).json(out.put("msg", "Internal error"));
             }
         };
+    }
+
+    private boolean isWithinGracePeriod(User user) {
+        return user.getTotpGracePeriodEnd() != null
+                && Instant.now().isBefore(user.getTotpGracePeriodEnd());
     }
 
     private String buildTempToken(String email, String preAuthType) {

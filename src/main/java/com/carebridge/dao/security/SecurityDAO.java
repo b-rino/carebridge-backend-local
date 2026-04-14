@@ -9,6 +9,9 @@ import jakarta.persistence.EntityManagerFactory;
 import jakarta.persistence.NoResultException;
 import jakarta.persistence.TypedQuery;
 
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
+
 public class SecurityDAO implements ISecurityDAO {
 
     private final EntityManagerFactory emf;
@@ -119,6 +122,22 @@ public class SecurityDAO implements ISecurityDAO {
             int updated = em.createQuery(
                     "UPDATE User u SET u.totpEnabled = true WHERE u.email = :email"
             )
+            .setParameter("email", email)
+            .executeUpdate();
+            em.getTransaction().commit();
+            if (updated == 0) throw new ApiRuntimeException(404, "User not found: " + email);
+        }
+    }
+
+    @Override
+    public void renewGracePeriod(String email) {
+        try (var em = em()) {
+            em.getTransaction().begin();
+            Instant deadline = Instant.now().plus(14, ChronoUnit.DAYS);
+            int updated = em.createQuery(
+                    "UPDATE User u SET u.totpGracePeriodEnd = :deadline WHERE u.email = :email"
+            )
+            .setParameter("deadline", deadline)
             .setParameter("email", email)
             .executeUpdate();
             em.getTransaction().commit();

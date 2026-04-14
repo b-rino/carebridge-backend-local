@@ -71,6 +71,9 @@ public class User implements ISecurityUser {
     @Column(name = "totp_enabled", nullable = false)
     private boolean totpEnabled = false;
 
+    @Column(name = "totp_grace_period_end")
+    private Instant totpGracePeriodEnd;
+
     // ========== NYE RELATIONER ==========
 
     // Hvis brugeren er en RESIDENT - link til deres Resident profil
@@ -249,6 +252,14 @@ public class User implements ISecurityUser {
 
     public void setTotpEnabled(boolean totpEnabled) {
         this.totpEnabled = totpEnabled;
+    }
+
+    public Instant getTotpGracePeriodEnd() {
+        return totpGracePeriodEnd;
+    }
+
+    public void setTotpGracePeriodEnd(Instant totpGracePeriodEnd) {
+        this.totpGracePeriodEnd = totpGracePeriodEnd;
     }
 
     // ========== NYE GETTERS & SETTERS FOR RELATIONER ==========

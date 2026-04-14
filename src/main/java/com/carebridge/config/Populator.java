@@ -10,15 +10,18 @@ import jakarta.persistence.EntityTransaction;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 
 public class Populator {
     private static final Logger logger = LoggerFactory.getLogger(Populator.class);
 
     // Kendte TOTP-secrets til brug i tests
-    public static final String ADMIN_TOTP_SECRET  = "JBSWY3DPEHPK3PXP";
-    public static final String ALICE_TOTP_SECRET  = "JBSWY3DPEHPK3PXQ";
+    public static final String ADMIN_TOTP_SECRET   = "JBSWY3DPEHPK3PXP";
+    public static final String ALICE_TOTP_SECRET   = "JBSWY3DPEHPK3PXQ";
     public static final String PARTIAL_TOTP_SECRET = "JBSWY3DPEHPK3PXR";
+    public static final String GRACE_TOTP_SECRET   = "JBSWY3DPEHPK3PXS";
 
     public static void populate(EntityManagerFactory emf) {
         EntityManager em = emf.createEntityManager();
@@ -40,8 +43,8 @@ public class Populator {
                 admin.setDisplayPhone("000-0000-0000");
                 admin.setInternalEmail("admin.internal@carebridge.io");
                 admin.setInternalPhone("111-1111-1111");
-                admin.setTotpSecret(ADMIN_TOTP_SECRET);
-                admin.setTotpEnabled(true);
+                admin.setTotpSecret(null);
+                admin.setTotpEnabled(false);
                 em.persist(admin);
             }
 
@@ -95,6 +98,25 @@ public class Populator {
                 partial.setTotpSecret(PARTIAL_TOTP_SECRET);
                 partial.setTotpEnabled(false);
                 em.persist(partial);
+            }
+
+            // grace – 2FA opsat og inden for grace period (bruges i SecurityTest)
+            User grace = findUserByEmail(em, "grace@carebridge.io");
+            if (grace == null) {
+                grace = new User();
+                grace.setName("Grace");
+                grace.setEmail("grace@carebridge.io");
+                grace.setPassword("password123");
+                grace.setRole(Role.USER);
+                grace.setDisplayName("Grace Period User");
+                grace.setDisplayEmail("grace@carebridge.io");
+                grace.setDisplayPhone("777-7777-7777");
+                grace.setInternalEmail("grace.internal@carebridge.io");
+                grace.setInternalPhone("888-8888-8888");
+                grace.setTotpSecret(GRACE_TOTP_SECRET);
+                grace.setTotpEnabled(true);
+                grace.setTotpGracePeriodEnd(Instant.now().plus(14, ChronoUnit.DAYS));
+                em.persist(grace);
             }
 
             List<EventType> predefinedTypes = List.of(
